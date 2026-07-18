@@ -87,10 +87,10 @@ function parseRegionalFeed(raw: any[], inbound: InboundData): AircraftState[] {
 }
 
 // Last-known position cache for per-callsign tracked flights.
-// Serves the stale position when adsb.lol returns nothing for a cycle,
-// preventing the plane from flickering off the map during brief ADS-B gaps.
+// Empty feed response = coverage gap → hold last airborne position up to 30 min.
+// Confirmed ground (ac.ground === true) = actually landed → evict immediately.
 const trackedCache = new Map<string, { state: AircraftState; ts: number }>()
-const TRACKED_STALE_MS = 60_000  // hold last position for up to 60 s
+const TRACKED_STALE_MS = 30 * 60_000  // hold through coverage gaps (up to 30 min)
 
 // Fetch a specific callsign globally — used for Syrian flights outside the regional radius
 async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null): Promise<AircraftState | null> {
@@ -104,14 +104,21 @@ async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null): Promi
       const data = await res.json()
       const ac   = (data.ac ?? [])[0]
       if (ac && ac.lat != null && ac.lon != null && !ac.ground) {
+        // Confirmed airborne — refresh cache
         const state = buildAircraftState(ac, true, airport)
         trackedCache.set(cs, { state, ts: Date.now() })
         return state
       }
+      if (ac?.ground) {
+        // Confirmed on ground — evict cache so plane disappears immediately
+        trackedCache.delete(cs)
+        return null
+      }
+      // ac is empty (coverage gap) — fall through to stale cache below
     }
-  } catch { /* fall through to stale cache */ }
+  } catch { /* network error — fall through to stale cache */ }
 
-  // Live fetch failed or returned nothing — serve last known position if recent
+  // No live data: serve last known airborne position if within the stale window
   const cached = trackedCache.get(cs)
   if (cached && Date.now() - cached.ts < TRACKED_STALE_MS) return cached.state
   return null
