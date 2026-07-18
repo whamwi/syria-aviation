@@ -1,77 +1,63 @@
-import { airlineByIata, extractIata } from '@/lib/airlines'
-import { normalizeFlight }            from '@/lib/normalize'
+// Queries Supabase for arrivals that are likely airborne right now:
+// scheduled today, not yet landed/cancelled, arriving within the next 3 hours.
+// Falls back to empty sets if DB is unavailable.
 
-// Fly CHAM transponder broadcasts "FYC" but our airlines DB records ICAO as "CHC"
-const ICAO_OVERRIDES: Record<string, string> = {
-  CHC: 'FYC',
-}
+import { supabase } from '@/lib/supabase'
 
-const TTL = 5 * 60_000
+const TTL = 2 * 60_000  // re-query every 2 min (window shifts as time passes)
 
 export interface InboundData {
-  callsigns: Set<string>  // exact ICAO callsigns expected on ADS-B
-  prefixes:  Set<string>  // 3-letter ICAO prefixes of airlines with Syria arrivals today
+  callsigns: Set<string>  // exact ICAO callsigns, e.g. "QTR410"
+  prefixes:  Set<string>  // 3-letter ICAO prefixes of airborne inbound airlines
 }
 
 let cache: { data: InboundData; ts: number } | null = null
 
-function iataToIcao(iata: string): string | null {
-  const airline = airlineByIata(iata)
-  if (!airline?.icao || airline.icao === 'N/A') return null
-  return ICAO_OVERRIDES[airline.icao] ?? airline.icao
-}
-
-function flightNumToCallsign(flightNum: string): string | null {
-  const iata = extractIata(flightNum)
-  if (!iata) return null
-  const icao = iataToIcao(iata)
-  if (!icao) return null
-  const suffix = flightNum.slice(iata.length).replace(/\s+/g, '')
-  if (!suffix) return null
-  return (icao + suffix).toUpperCase()
-}
-
 export async function getInboundData(): Promise<InboundData> {
   if (cache && Date.now() - cache.ts < TTL) return cache.data
 
-  const today = new Date().toISOString().slice(0, 10)
+  try {
+    // Syria is UTC+3. We query flights arriving in the next 3 hours
+    // and flights that departed recently (up to 30 min ago — already over Syria).
+    const now = new Date()
+    const syriaNow = new Date(now.getTime() + 3 * 60 * 60 * 1000) // UTC → UTC+3
 
-  const [alpRes, damRes] = await Promise.allSettled([
-    fetch('https://alpairport.gov.sy/api/flights.php', {
-      headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
-      cache: 'no-store',
-    }).then(r => r.json()),
-    fetch('https://damairport.gov.sy/api/flights.php', {
-      headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
-      cache: 'no-store',
-    }).then(r => r.json()),
-  ])
+    const todayDate = syriaNow.toISOString().slice(0, 10)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const windowStart = new Date(syriaNow.getTime() - 30  * 60 * 1000)
+    const windowEnd   = new Date(syriaNow.getTime() + 3 * 60 * 60 * 1000)
+    const startTime   = `${pad(windowStart.getUTCHours())}:${pad(windowStart.getUTCMinutes())}:00`
+    const endTime     = `${pad(windowEnd.getUTCHours())}:${pad(windowEnd.getUTCMinutes())}:00`
 
-  const callsigns = new Set<string>()
-  const prefixes  = new Set<string>()
+    const { data, error } = await supabase
+      .from('flights')
+      .select('icao_callsign, flight_number')
+      .eq('direction', 'arrival')
+      .eq('scheduled_date', todayDate)
+      .not('status', 'in', '("landed","cancelled")')
+      .gte('scheduled_time', startTime)
+      .lte('scheduled_time', endTime)
 
-  for (const [res, airport] of [[alpRes, 'ALP'], [damRes, 'DAM']] as const) {
-    if (res.status !== 'fulfilled') continue
-    const raw = res.value.flights ?? []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const f of raw.map((r: any) => normalizeFlight(r, airport as 'ALP' | 'DAM'))) {
-      if (f.direction !== 'arrival' || f.date !== today) continue
+    if (error) throw error
 
-      const iata = extractIata(f.flightNumber)
-      if (!iata) continue
-      const icao = iataToIcao(iata)
-      if (!icao) continue
+    const callsigns = new Set<string>()
+    const prefixes  = new Set<string>()
 
-      prefixes.add(icao)
-
-      const cs = flightNumToCallsign(f.flightNumber)
-      if (cs) callsigns.add(cs)
+    for (const row of data ?? []) {
+      if (row.icao_callsign) {
+        callsigns.add(row.icao_callsign.toUpperCase())
+        prefixes.add(row.icao_callsign.slice(0, 3).toUpperCase())
+      }
     }
-  }
 
-  const data: InboundData = { callsigns, prefixes }
-  cache = { data, ts: Date.now() }
-  return data
+    const result: InboundData = { callsigns, prefixes }
+    cache = { data: result, ts: Date.now() }
+    return result
+  } catch (err) {
+    console.error('[inbound] DB query failed:', err)
+    // Return empty — aircraft will still show as overSyria (gold) if they're there
+    return { callsigns: new Set(), prefixes: new Set() }
+  }
 }
 
 // Backward-compat alias used by older compiled modules
