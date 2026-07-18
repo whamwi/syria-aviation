@@ -86,6 +86,12 @@ function parseRegionalFeed(raw: any[], inbound: InboundData): AircraftState[] {
     .filter((a: AircraftState) => a.overSyria || a.inboundToSyria)
 }
 
+// Last-known position cache for per-callsign tracked flights.
+// Serves the stale position when adsb.lol returns nothing for a cycle,
+// preventing the plane from flickering off the map during brief ADS-B gaps.
+const trackedCache = new Map<string, { state: AircraftState; ts: number }>()
+const TRACKED_STALE_MS = 60_000  // hold last position for up to 60 s
+
 // Fetch a specific callsign globally — used for Syrian flights outside the regional radius
 async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null): Promise<AircraftState | null> {
   try {
@@ -94,14 +100,21 @@ async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null): Promi
       signal: AbortSignal.timeout(4000),
       cache: 'no-store',
     })
-    if (!res.ok) return null
-    const data = await res.json()
-    const ac   = (data.ac ?? [])[0]
-    if (!ac || ac.lat == null || ac.lon == null || ac.ground) return null
-    return buildAircraftState(ac, true, airport)  // always Syrian — scheduled flight
-  } catch {
-    return null
-  }
+    if (res.ok) {
+      const data = await res.json()
+      const ac   = (data.ac ?? [])[0]
+      if (ac && ac.lat != null && ac.lon != null && !ac.ground) {
+        const state = buildAircraftState(ac, true, airport)
+        trackedCache.set(cs, { state, ts: Date.now() })
+        return state
+      }
+    }
+  } catch { /* fall through to stale cache */ }
+
+  // Live fetch failed or returned nothing — serve last known position if recent
+  const cached = trackedCache.get(cs)
+  if (cached && Date.now() - cached.ts < TRACKED_STALE_MS) return cached.state
+  return null
 }
 
 async function fetchFromFeed(): Promise<AirspaceSnapshot> {
