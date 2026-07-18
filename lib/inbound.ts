@@ -21,20 +21,43 @@ export async function getInboundData(): Promise<InboundData> {
     const now = new Date()
     const syriaNow = new Date(now.getTime() + 3 * 60 * 60 * 1000) // UTC → UTC+3
 
-    const todayDate = syriaNow.toISOString().slice(0, 10)
     const pad = (n: number) => String(n).padStart(2, '0')
     const windowStart = new Date(syriaNow.getTime() - 4 * 60 * 60 * 1000)
     const windowEnd   = new Date(syriaNow.getTime() + 4 * 60 * 60 * 1000)
-    const startTime   = `${pad(windowStart.getUTCHours())}:${pad(windowStart.getUTCMinutes())}:00`
-    const endTime     = `${pad(windowEnd.getUTCHours())}:${pad(windowEnd.getUTCMinutes())}:00`
 
-    const { data, error } = await supabase
-      .from('flights')
-      .select('icao_callsign, flight_number')
-      .eq('scheduled_date', todayDate)
-      .not('status', 'in', '("landed","cancelled")')
-      .gte('scheduled_time', startTime)
-      .lte('scheduled_time', endTime)
+    // Collect the date(s) the window spans — may cross midnight
+    const dateSet = new Set([
+      windowStart.toISOString().slice(0, 10),
+      syriaNow.toISOString().slice(0, 10),
+      windowEnd.toISOString().slice(0, 10),
+    ])
+    const dates = [...dateSet]
+
+    // For each date in the window, query separately with the right time bounds
+    const allRows: Array<{ icao_callsign: string | null; flight_number: string | null }> = []
+
+    for (const date of dates) {
+      // Time bounds for this specific date
+      const dayStart = date === windowStart.toISOString().slice(0, 10)
+        ? `${pad(windowStart.getUTCHours())}:${pad(windowStart.getUTCMinutes())}:00`
+        : '00:00:00'
+      const dayEnd = date === windowEnd.toISOString().slice(0, 10)
+        ? `${pad(windowEnd.getUTCHours())}:${pad(windowEnd.getUTCMinutes())}:00`
+        : '23:59:59'
+
+      const { data, error } = await supabase
+        .from('flights')
+        .select('icao_callsign, flight_number')
+        .eq('scheduled_date', date)
+        .not('status', 'in', '("landed","cancelled")')
+        .gte('scheduled_time', dayStart)
+        .lte('scheduled_time', dayEnd)
+
+      if (error) throw error
+      allRows.push(...(data ?? []))
+    }
+
+    const data = allRows
 
     if (error) throw error
 
