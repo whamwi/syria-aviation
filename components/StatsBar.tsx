@@ -23,7 +23,7 @@ export default function StatsBar() {
       fetch('/api/flights/dam').then(r => r.json()),
     ])
 
-    const airData    = airRes.status === 'fulfilled' ? airRes.value : {}
+    const airData    = airRes.status === 'fulfilled' ? airRes.value : null
     const alpFlights = alpRes.status === 'fulfilled' ? (alpRes.value.flights ?? []) : []
     const damFlights = damRes.status === 'fulfilled' ? (damRes.value.flights ?? []) : []
 
@@ -35,20 +35,41 @@ export default function StatsBar() {
       ...damFlights.map((f: { airline: string }) => f.airline),
     ])
 
-    setStats({
-      overSyria:      airData.overSyria      ?? 0,
-      inboundToSyria: airData.inboundToSyria ?? 0,
+    setStats(prev => ({
+      // Only update live aircraft counts when the feed is healthy (ok: true).
+      // Preserves the last known count during transient ADS-B outages.
+      overSyria:      airData?.ok ? (airData.overSyria      ?? prev.overSyria)      : prev.overSyria,
+      inboundToSyria: airData?.ok ? (airData.inboundToSyria ?? prev.inboundToSyria) : prev.inboundToSyria,
       dam:            damToday,
       alp:            alpToday,
       airlines:       allAirlines.size,
       loading:        false,
-    })
+    }))
   }
 
   useEffect(() => {
+    // Schedule data for airports + airlines (slow-changing, 2-min poll is fine)
     load()
-    const id = setInterval(load, 90_000)
-    return () => clearInterval(id)
+    const id = setInterval(load, 120_000)
+
+    // Live aircraft counts come from the SSE stream — same source as the map,
+    // so they update every ~5s and never drift out of sync with what's on screen.
+    const es = new EventSource('/api/airspace/stream')
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data)
+        if (d.ok) {
+          setStats(prev => ({
+            ...prev,
+            loading:        false,
+            overSyria:      d.overSyria      ?? prev.overSyria,
+            inboundToSyria: d.inboundToSyria ?? prev.inboundToSyria,
+          }))
+        }
+      } catch { /* ignore */ }
+    }
+
+    return () => { clearInterval(id); es.close() }
   }, [])
 
   const items = [
