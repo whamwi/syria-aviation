@@ -19,6 +19,7 @@ export interface AircraftState {
   heading: number | null
   overSyria: boolean
   inboundToSyria: boolean
+  syriaAirport: 'DAM' | 'ALP' | null
   trackerUrl: string
 }
 
@@ -38,7 +39,7 @@ let cache: AirspaceSnapshot | null = null
 let inflight: Promise<AirspaceSnapshot> | null = null
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildAircraftState(a: any, inboundToSyria: boolean): AircraftState {
+function buildAircraftState(a: any, inboundToSyria: boolean, syriaAirport: 'DAM' | 'ALP' | null = null): AircraftState {
   const callsign = (a.flight ?? a.hex ?? '').trim()
   const airline  = airlineFromCallsign(callsign)
   const lat      = a.lat as number
@@ -57,6 +58,7 @@ function buildAircraftState(a: any, inboundToSyria: boolean): AircraftState {
     heading:     a.track    ?? null,
     overSyria,
     inboundToSyria,
+    syriaAirport,
     trackerUrl:  callsign
       ? `https://www.flightradar24.com/${callsign.toLowerCase().trim()}`
       : '',
@@ -78,13 +80,14 @@ function parseRegionalFeed(raw: any[], inbound: { callsigns: Set<string>; prefix
                         lon >= SYRIA.lomin && lon <= SYRIA.lomax
       const exactMatch  = inbound.callsigns.has(cs)
       const prefixMatch = !overSyria && cs.length >= 3 && inbound.prefixes.has(cs.slice(0, 3))
-      return buildAircraftState(a, exactMatch || prefixMatch)
+      const airport     = exactMatch ? (inbound.airportByCallsign.get(cs) ?? null) : null
+      return buildAircraftState(a, exactMatch || prefixMatch, airport)
     })
     .filter((a: AircraftState) => a.overSyria || a.inboundToSyria)
 }
 
 // Fetch a specific callsign globally — used for Syrian flights outside the regional radius
-async function fetchByCallsign(cs: string): Promise<AircraftState | null> {
+async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null): Promise<AircraftState | null> {
   try {
     const res = await fetch(`https://api.adsb.lol/v2/callsign/${cs}`, {
       headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
@@ -95,7 +98,7 @@ async function fetchByCallsign(cs: string): Promise<AircraftState | null> {
     const data = await res.json()
     const ac   = (data.ac ?? [])[0]
     if (!ac || ac.lat == null || ac.lon == null || ac.ground) return null
-    return buildAircraftState(ac, true)  // always blue — it's a scheduled Syrian flight
+    return buildAircraftState(ac, true, airport)  // always Syrian — scheduled flight
   } catch {
     return null
   }
@@ -119,7 +122,7 @@ async function fetchFromFeed(): Promise<AirspaceSnapshot> {
   const missing = [...inbound.callsigns].filter(cs => !foundCallsigns.has(cs))
 
   // Fetch each missing Syrian flight individually — they're outside the 350nm radius
-  const tracked = (await Promise.all(missing.map(fetchByCallsign)))
+  const tracked = (await Promise.all(missing.map(cs => fetchByCallsign(cs, inbound.airportByCallsign.get(cs) ?? null))))
     .filter(Boolean) as AircraftState[]
 
   const aircraft = [...regional, ...tracked]

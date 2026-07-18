@@ -33,6 +33,7 @@ export interface Aircraft {
   heading: number | null
   overSyria: boolean
   inboundToSyria: boolean
+  syriaAirport: 'DAM' | 'ALP' | null
   trackerUrl: string
 }
 
@@ -161,10 +162,27 @@ export default function LiveMapInner({ aircraft, routes, apFilter, dirFilter }: 
           </CircleMarker>
         ))}
 
+        {/* Tether lines — Syrian flights to their home airport */}
+        {aircraft
+          .filter(a => a.inboundToSyria && a.syriaAirport && AIRPORTS[a.syriaAirport])
+          .map(a => {
+            const ap = AIRPORTS[a.syriaAirport!]
+            const color = a.syriaAirport === 'DAM' ? '#18A866' : '#4A90E2'
+            return (
+              <Polyline
+                key={`tether-${a.icao24}`}
+                positions={[[ap.lat, ap.lon], [a.lat, a.lon]]}
+                pathOptions={{ color, weight: 1, opacity: 0.35, dashArray: '4 7' }}
+              />
+            )
+          })}
+
         {/* Aircraft — rotated plane icons */}
-        {/* Blue = Syrian flight (to/from), Gold = non-Syrian overflight, Gray = other regional */}
+        {/* DAM = green, ALP = blue, non-Syrian overflight = gold, other = gray */}
         {aircraft.map(a => {
-          const color = a.inboundToSyria ? '#5BBBFF' : (a.overSyria ? '#E8B820' : '#6B7F8E')
+          const color = a.inboundToSyria
+            ? (a.syriaAirport === 'DAM' ? '#18A866' : '#4A90E2')
+            : (a.overSyria ? '#E8B820' : '#6B7F8E')
           return (
             <Marker
               key={a.icao24}

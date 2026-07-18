@@ -7,8 +7,9 @@ import { supabase } from '@/lib/supabase'
 const TTL = 2 * 60_000  // re-query every 2 min (window shifts as time passes)
 
 export interface InboundData {
-  callsigns: Set<string>  // exact ICAO callsigns, e.g. "QTR410"
-  prefixes:  Set<string>  // 3-letter ICAO prefixes of airborne Syrian-route airlines
+  callsigns:        Set<string>                        // exact ICAO callsigns, e.g. "QTR410"
+  prefixes:         Set<string>                        // 3-letter ICAO prefixes of airborne Syrian-route airlines
+  airportByCallsign: Map<string, 'DAM' | 'ALP'>       // which Syrian airport this flight serves
 }
 
 let cache: { data: InboundData; ts: number } | null = null
@@ -34,7 +35,7 @@ export async function getInboundData(): Promise<InboundData> {
     const dates = [...dateSet]
 
     // For each date in the window, query separately with the right time bounds
-    const allRows: Array<{ icao_callsign: string | null; flight_number: string | null }> = []
+    const allRows: Array<{ icao_callsign: string | null; origin: string | null; destination: string | null }> = []
 
     for (const date of dates) {
       // Time bounds for this specific date
@@ -47,7 +48,7 @@ export async function getInboundData(): Promise<InboundData> {
 
       const { data, error } = await supabase
         .from('flights')
-        .select('icao_callsign, flight_number')
+        .select('icao_callsign, origin, destination')
         .eq('scheduled_date', date)
         .not('status', 'in', '("landed","cancelled")')
         .gte('scheduled_time', dayStart)
@@ -57,25 +58,33 @@ export async function getInboundData(): Promise<InboundData> {
       allRows.push(...(data ?? []))
     }
 
-    const data = allRows
+    const callsigns        = new Set<string>()
+    const prefixes         = new Set<string>()
+    const airportByCallsign = new Map<string, 'DAM' | 'ALP'>()
+    const SYRIAN_AIRPORTS  = new Set(['DAM', 'ALP'])
 
-    const callsigns = new Set<string>()
-    const prefixes  = new Set<string>()
-
-    for (const row of data ?? []) {
+    for (const row of allRows) {
       if (row.icao_callsign) {
-        callsigns.add(row.icao_callsign.toUpperCase())
-        prefixes.add(row.icao_callsign.slice(0, 3).toUpperCase())
+        const cs = row.icao_callsign.toUpperCase()
+        callsigns.add(cs)
+        prefixes.add(cs.slice(0, 3))
+        // Map callsign → which Syrian airport it serves (origin takes priority)
+        const ap = SYRIAN_AIRPORTS.has(row.origin ?? '')
+          ? (row.origin as 'DAM' | 'ALP')
+          : SYRIAN_AIRPORTS.has(row.destination ?? '')
+            ? (row.destination as 'DAM' | 'ALP')
+            : null
+        if (ap) airportByCallsign.set(cs, ap)
       }
     }
 
-    const result: InboundData = { callsigns, prefixes }
+    const result: InboundData = { callsigns, prefixes, airportByCallsign }
     cache = { data: result, ts: Date.now() }
     return result
   } catch (err) {
     console.error('[inbound] DB query failed:', err)
     // Return empty — aircraft will still show as overSyria (gold) if they're there
-    return { callsigns: new Set(), prefixes: new Set() }
+    return { callsigns: new Set(), prefixes: new Set(), airportByCallsign: new Map() }
   }
 }
 

@@ -18,6 +18,8 @@ export default function LiveMap() {
   const [routes, setRoutes]     = useState<RouteArc[]>([])
   const [apFilter,  setApFilter]  = useState<'all' | 'alp' | 'dam'>('all')
   const [dirFilter, setDirFilter] = useState<'all' | 'arr' | 'dep'>('all')
+  const [lastTs, setLastTs]     = useState<number>(0)
+  const [secAgo, setSecAgo]     = useState<number | null>(null)
 
   const fetchRoutes = useCallback(async () => {
     const today = new Date().toISOString().slice(0, 10)
@@ -59,6 +61,7 @@ export default function LiveMap() {
         const d = JSON.parse(e.data)
         if (d.ok && Array.isArray(d.aircraft)) {
           setAircraft(d.aircraft.filter((a: Aircraft) => a.lat && a.lon))
+          if (d.ts) setLastTs(d.ts)
         }
       } catch { /* ignore parse errors */ }
     }
@@ -70,6 +73,14 @@ export default function LiveMap() {
     const routeId = setInterval(fetchRoutes, 120_000)
     return () => clearInterval(routeId)
   }, [fetchRoutes])
+
+  // 1-second ticker for "updated Xs ago"
+  useEffect(() => {
+    if (!lastTs) return
+    setSecAgo(Math.round((Date.now() - lastTs) / 1000))
+    const id = setInterval(() => setSecAgo(Math.round((Date.now() - lastTs) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [lastTs])
 
   const fb = (label: string, active: boolean, onClick: () => void, activeClass = '') => (
     <button
@@ -110,25 +121,35 @@ export default function LiveMap() {
         </div>
 
         {/* Stats */}
-        <div className="flex" style={{ borderTop: '1px solid var(--av-line)', background: 'var(--av-panel)' }}>
+        <div className="flex items-center" style={{ borderTop: '1px solid var(--av-line)', background: 'var(--av-panel)' }}>
           {[
-            { v: aircraft.filter(a => a.inboundToSyria).length,                        l: 'Syrian flights tracked',   color: '#5BBBFF' },
-            { v: aircraft.filter(a => a.overSyria && !a.inboundToSyria).length,        l: 'other overflights',        color: '#E8B820' },
-            { v: routes.filter(r => apFilter === 'all' || r.ap === apFilter).length,   l: 'scheduled routes today',   color: 'var(--av-gold)' },
+            { v: aircraft.filter(a => a.inboundToSyria && a.syriaAirport === 'DAM').length, l: 'DAM flights', color: '#18A866' },
+            { v: aircraft.filter(a => a.inboundToSyria && a.syriaAirport === 'ALP').length, l: 'ALP flights', color: '#4A90E2' },
+            { v: aircraft.filter(a => a.overSyria && !a.inboundToSyria).length,             l: 'other overflights', color: '#E8B820' },
+            { v: routes.filter(r => apFilter === 'all' || r.ap === apFilter).length,        l: 'routes today', color: 'var(--av-gold)' },
           ].map((s, i, arr) => (
-            <div key={i} className="flex-1 px-4 py-2" style={{ borderRight: i < arr.length - 1 ? '1px solid var(--av-line)' : 'none' }}>
+            <div key={i} className="flex-1 px-4 py-2" style={{ borderRight: '1px solid var(--av-line)' }}>
               <span className="font-mono text-sm" style={{ color: s.color }}>{s.v}</span>
               <span className="text-[10px] ml-1.5" style={{ color: 'var(--av-ink3)' }}>{s.l}</span>
             </div>
           ))}
+          <div className="px-4 py-2 text-[10px] tabular-nums" style={{ color: 'var(--av-ink3)', whiteSpace: 'nowrap' }}>
+            {secAgo === null ? '—' : secAgo === 0 ? 'live' : `updated ${secAgo}s ago`}
+            <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full align-middle"
+              style={{ background: secAgo !== null && secAgo < 10 ? '#18A866' : '#6B7F8E' }} />
+          </div>
         </div>
       </div>
 
       {/* Legend */}
       <div className="flex items-center gap-6 px-5 py-3 text-[11px]" style={{ color: 'var(--av-ink3)' }}>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#5BBBFF' }}/>
-          Syrian flight (to / from)
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#18A866' }}/>
+          Damascus flight
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#4A90E2' }}/>
+          Aleppo flight
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full inline-block" style={{ background: '#E8B820' }}/>
