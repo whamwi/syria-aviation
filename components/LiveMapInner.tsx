@@ -1,7 +1,30 @@
 'use client'
 
 import 'leaflet/dist/leaflet.css'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip } from 'react-leaflet'
+import { divIcon } from 'leaflet'
+import { MapContainer, TileLayer, Marker, CircleMarker, Polyline, Tooltip } from 'react-leaflet'
+
+// Top-down airplane silhouette pointing north (up) at 0°
+function planeIcon(color: string, heading: number | null, overSyria: boolean) {
+  const rot = heading ?? 0
+  const size = overSyria ? 30 : 24
+  const svg = `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <path fill="${color}" d="
+      M16,2 C14.5,2 14,4.5 14,8
+      L14,13 L2,19 L2,22 L14,19.5
+      L14,26 L10,28 L10,30.5 L16,29 L22,30.5 L22,28 L18,26
+      L18,19.5 L30,22 L30,19 L18,13
+      L18,8 C18,4.5 17.5,2 16,2 Z
+    "/>
+  </svg>`
+  return divIcon({
+    html: `<div style="transform:rotate(${rot}deg);width:${size}px;height:${size}px">${svg}</div>`,
+    className: '',
+    iconSize:   [size, size],
+    iconAnchor: [size / 2, size / 2],
+    tooltipAnchor: [size / 2, 0],
+  })
+}
 
 export interface Aircraft {
   icao24: string
@@ -142,28 +165,25 @@ export default function LiveMapInner({ aircraft, routes, apFilter, dirFilter }: 
           </CircleMarker>
         ))}
 
-        {/* Aircraft dots */}
-        {aircraft.map(a => (
-          <CircleMarker
-            key={a.icao24}
-            center={[a.lat, a.lon]}
-            radius={a.overSyria ? 6 : 4}
-            pathOptions={{
-              color:       a.overSyria ? '#E8B820' : (a.inboundToSyria ? '#5BBBFF' : '#5BBBFF'),
-              fillColor:   a.overSyria ? '#E8B820' : '#5BBBFF',
-              fillOpacity: 0.9,
-              weight:      a.overSyria ? 2 : 1,
-            }}
-            eventHandlers={{ click: () => a.trackerUrl && window.open(a.trackerUrl, '_blank', 'noopener') }}
-          >
-            <Tooltip className="av-tooltip">
-              <strong>{a.callsign || '—'}</strong>
-              {a.airline  ? ` · ${a.airline}`              : ''}
-              {a.altFt    ? ` · ${a.altFt.toLocaleString()}ft` : ''}
-              {a.speedKts ? ` · ${a.speedKts}kts`         : ''}
-            </Tooltip>
-          </CircleMarker>
-        ))}
+        {/* Aircraft — rotated plane icons */}
+        {aircraft.map(a => {
+          const color = a.overSyria ? '#E8B820' : '#5BBBFF'
+          return (
+            <Marker
+              key={a.icao24}
+              position={[a.lat, a.lon]}
+              icon={planeIcon(color, a.heading, a.overSyria)}
+              eventHandlers={{ click: () => a.trackerUrl && window.open(a.trackerUrl, '_blank', 'noopener') }}
+            >
+              <Tooltip className="av-tooltip">
+                <strong>{a.callsign || '—'}</strong>
+                {a.airline  ? ` · ${a.airline}`                  : ''}
+                {a.altFt    ? ` · ${a.altFt.toLocaleString()}ft` : ''}
+                {a.speedKts ? ` · ${a.speedKts}kts`             : ''}
+              </Tooltip>
+            </Marker>
+          )
+        })}
       </MapContainer>
     </div>
   )
