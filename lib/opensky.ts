@@ -3,7 +3,7 @@ import { getInboundData, type InboundData } from '@/lib/inbound'
 
 // adsb.lol — community ADS-B feed, no API key, no hard rate limit
 // Radius 350 nm centred on central Syria (35.3°N 38.4°E) covers the whole region
-const FEED_URL = 'https://api.adsb.lol/v2/lat/35.3/lon/38.4/dist/600'
+const FEED_URL = 'https://api.adsb.lol/v2/lat/35.3/lon/38.4/dist/350'
 
 const SYRIA = { lamin: 32.5, lomin: 35.5, lamax: 37.5, lomax: 42.3 }
 
