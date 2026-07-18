@@ -113,7 +113,7 @@ export default function LiveMap() {
         <div className="flex" style={{ borderTop: '1px solid var(--av-line)', background: 'var(--av-panel)' }}>
           {[
             { v: aircraft.filter(a => a.overSyria).length,     l: 'over Syria now',           color: '#E8B820' },
-            { v: aircraft.filter(a => a.inboundToSyria).length, l: 'inbound to Syria today', color: '#5BBBFF' },
+            { v: aircraft.filter(a => a.inboundToSyria).length, l: 'to / from Syria', color: '#5BBBFF' },
             { v: routes.filter(r => apFilter === 'all' || r.ap === apFilter).length, l: 'scheduled routes today', color: 'var(--av-gold)' },
           ].map((s, i, arr) => (
             <div key={i} className="flex-1 px-4 py-2" style={{ borderRight: i < arr.length - 1 ? '1px solid var(--av-line)' : 'none' }}>
@@ -132,7 +132,7 @@ export default function LiveMap() {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full inline-block" style={{ background: '#5BBBFF' }}/>
-          Inbound to Syria (scheduled arrivals)
+          To / from Syria (scheduled flights)
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-px inline-block" style={{ background: '#18A866' }}/>Arrivals
