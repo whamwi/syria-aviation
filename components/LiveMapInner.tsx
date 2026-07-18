@@ -1,21 +1,17 @@
 'use client'
 
 import 'leaflet/dist/leaflet.css'
-import { divIcon } from 'leaflet'
 import { MapContainer, TileLayer, Marker, CircleMarker, Polyline, Tooltip } from 'react-leaflet'
 
 // Top-down airplane silhouette pointing north (up) at 0°
+// divIcon is required inside the function to avoid SSR/build-time Leaflet errors
 function planeIcon(color: string, heading: number | null, overSyria: boolean) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { divIcon } = require('leaflet') as typeof import('leaflet')
   const rot = heading ?? 0
   const size = overSyria ? 30 : 24
   const svg = `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-    <path fill="${color}" d="
-      M16,2 C14.5,2 14,4.5 14,8
-      L14,13 L2,19 L2,22 L14,19.5
-      L14,26 L10,28 L10,30.5 L16,29 L22,30.5 L22,28 L18,26
-      L18,19.5 L30,22 L30,19 L18,13
-      L18,8 C18,4.5 17.5,2 16,2 Z
-    "/>
+    <path fill="${color}" d="M16,2 C14.5,2 14,4.5 14,8 L14,13 L2,19 L2,22 L14,19.5 L14,26 L10,28 L10,30.5 L16,29 L22,30.5 L22,28 L18,26 L18,19.5 L30,22 L30,19 L18,13 L18,8 C18,4.5 17.5,2 16,2 Z"/>
   </svg>`
   return divIcon({
     html: `<div style="transform:rotate(${rot}deg);width:${size}px;height:${size}px">${svg}</div>`,
