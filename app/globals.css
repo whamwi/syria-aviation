@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
+/* ── Aviation Design Tokens ─────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Dark theme (default) */
+  --av-bg:       #07101F;
+  --av-panel:    #0D1928;
+  --av-raised:   #142036;
+  --av-line:     #1B3251;
+  --av-gold:     #C49A1C;
+  --av-gold10:   rgba(196,154,28,.10);
+  --av-gold20:   rgba(196,154,28,.20);
+  --av-ink:      #DDD8C4;
+  --av-ink2:     #6382A0;
+  --av-ink3:     #3A5570;
+  --av-go:       #18A866;
+  --av-go10:     rgba(24,168,102,.10);
+  --av-warn:     #D07A2A;
+  --av-warn10:   rgba(208,122,42,.10);
+  --av-err:      #CC4040;
+  --av-err10:    rgba(204,64,64,.10);
+
+  --av-font-display: 'Barlow Semi Condensed', 'Segoe UI', Tahoma, Arial, sans-serif;
+  --av-font-mono:    'DM Mono', 'SF Mono', Consolas, monospace;
+  --av-font-arabic:  'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+[data-theme="light"] {
+  --av-bg:       #F0EDE0;
+  --av-panel:    #FFFFFF;
+  --av-raised:   #F7F5EE;
+  --av-line:     #D5DFD0;
+  --av-gold:     #9B6C0A;
+  --av-gold10:   rgba(155,108,10,.08);
+  --av-gold20:   rgba(155,108,10,.16);
+  --av-ink:      #0A1624;
+  --av-ink2:     #3A5570;
+  --av-ink3:     #6382A0;
+  --av-go:       #1A8C55;
+  --av-warn:     #B05A10;
+  --av-err:      #A82020;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--av-bg);
+  --color-foreground: var(--av-ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ── Base ────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--av-bg);
+  color: var(--av-ink);
+  font-family: var(--av-font-display);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100%;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Typography helpers ──────────────────────────────────── */
+.font-mono  { font-family: var(--av-font-mono); }
+.font-ar    { font-family: var(--av-font-arabic); direction: rtl; }
+
+/* Flight code style */
+.flight-code {
+  font-family: var(--av-font-mono);
+  letter-spacing: .06em;
+  font-size: .85em;
+  color: var(--av-gold);
+}
+
+/* Status badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  border: 1px solid transparent;
+}
+.badge-go   { background: var(--av-go10);   color: var(--av-go);   border-color: var(--av-go);   }
+.badge-warn { background: var(--av-warn10); color: var(--av-warn); border-color: var(--av-warn); }
+.badge-err  { background: var(--av-err10);  color: var(--av-err);  border-color: var(--av-err);  }
+.badge-dim  { background: var(--av-gold10); color: var(--av-ink2); border-color: var(--av-line); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--av-panel); }
+::-webkit-scrollbar-thumb { background: var(--av-line); border-radius: 3px; }
+
+/* ── Leaflet overrides ───────────────────────────────────── */
+.leaflet-container { background: #07101F !important; font-family: var(--av-font-display); }
+.leaflet-control-zoom { border: 1px solid var(--av-line) !important; }
+.leaflet-control-zoom a {
+  background: rgba(13,25,40,0.92) !important;
+  color: var(--av-ink2) !important;
+  border-bottom: 1px solid var(--av-line) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--av-raised) !important; color: var(--av-ink) !important; }
+.leaflet-control-attribution {
+  background: rgba(7,16,31,0.7) !important;
+  color: rgba(58,85,112,0.8) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a { color: rgba(99,130,160,0.6) !important; }
+
+/* Aircraft tooltip */
+.av-tooltip {
+  background: rgba(13,25,40,0.96) !important;
+  border: 1px solid var(--av-line) !important;
+  color: var(--av-ink) !important;
+  font-family: var(--av-font-mono) !important;
+  font-size: 11px !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.6) !important;
+  border-radius: 4px !important;
+  padding: 4px 9px !important;
+  white-space: nowrap;
+}
+.av-tooltip::before { display: none !important; }
+
+/* Airport permanent label */
+.av-ap-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 4px !important;
+  font-family: 'Tahoma', Arial, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 5px rgba(3,11,22,1), 0 0 8px rgba(3,11,22,0.9) !important;
+}
+.av-ap-label::before { display: none !important; }
