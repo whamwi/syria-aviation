@@ -1,5 +1,5 @@
 import { airlineFromCallsign } from '@/lib/airlines'
-import { getInboundData } from '@/lib/inbound'
+import { getInboundData, type InboundData } from '@/lib/inbound'
 
 // adsb.lol — community ADS-B feed, no API key, no hard rate limit
 // Radius 350 nm centred on central Syria (35.3°N 38.4°E) covers the whole region
@@ -66,7 +66,7 @@ function buildAircraftState(a: any, inboundToSyria: boolean, syriaAirport: 'DAM'
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseRegionalFeed(raw: any[], inbound: { callsigns: Set<string>; prefixes: Set<string> }): AircraftState[] {
+function parseRegionalFeed(raw: any[], inbound: InboundData): AircraftState[] {
   return raw
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((a: any) => a.lat != null && a.lon != null && !a.ground)
