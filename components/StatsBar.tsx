@@ -52,8 +52,8 @@ export default function StatsBar() {
   }, [])
 
   const items = [
-    { value: stats.overSyria,      label: 'aircraft over Syria',      icon: '✈',  pulse: true },
-    { value: stats.inboundToSyria, label: 'to / from Syria',   icon: '✈️' },
+    { value: stats.inboundToSyria, label: 'Syrian flights',           icon: '✈️', pulse: true },
+    { value: stats.overSyria,      label: 'aircraft over Syria',      icon: '✈'  },
     { value: stats.dam,            label: 'at Damascus today',        icon: '🏙' },
     { value: stats.alp,            label: 'at Aleppo today',          icon: '🌆' },
     { value: stats.airlines,       label: 'airlines serving Syria',   icon: '🛫' },

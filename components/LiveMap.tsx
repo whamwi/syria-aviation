@@ -112,9 +112,9 @@ export default function LiveMap() {
         {/* Stats */}
         <div className="flex" style={{ borderTop: '1px solid var(--av-line)', background: 'var(--av-panel)' }}>
           {[
-            { v: aircraft.filter(a => a.overSyria).length,     l: 'over Syria now',           color: '#E8B820' },
-            { v: aircraft.filter(a => a.inboundToSyria).length, l: 'to / from Syria', color: '#5BBBFF' },
-            { v: routes.filter(r => apFilter === 'all' || r.ap === apFilter).length, l: 'scheduled routes today', color: 'var(--av-gold)' },
+            { v: aircraft.filter(a => a.inboundToSyria).length,                        l: 'Syrian flights tracked',   color: '#5BBBFF' },
+            { v: aircraft.filter(a => a.overSyria && !a.inboundToSyria).length,        l: 'other overflights',        color: '#E8B820' },
+            { v: routes.filter(r => apFilter === 'all' || r.ap === apFilter).length,   l: 'scheduled routes today',   color: 'var(--av-gold)' },
           ].map((s, i, arr) => (
             <div key={i} className="flex-1 px-4 py-2" style={{ borderRight: i < arr.length - 1 ? '1px solid var(--av-line)' : 'none' }}>
               <span className="font-mono text-sm" style={{ color: s.color }}>{s.v}</span>
@@ -127,12 +127,12 @@ export default function LiveMap() {
       {/* Legend */}
       <div className="flex items-center gap-6 px-5 py-3 text-[11px]" style={{ color: 'var(--av-ink3)' }}>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#E8B820' }}/>
-          Over Syria
+          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#5BBBFF' }}/>
+          Syrian flight (to / from)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full inline-block" style={{ background: '#5BBBFF' }}/>
-          To / from Syria (scheduled flights)
+          <span className="w-2 h-2 rounded-full inline-block" style={{ background: '#E8B820' }}/>
+          Non-Syrian overflight
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-px inline-block" style={{ background: '#18A866' }}/>Arrivals

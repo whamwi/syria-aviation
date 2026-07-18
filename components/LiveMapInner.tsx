@@ -162,8 +162,9 @@ export default function LiveMapInner({ aircraft, routes, apFilter, dirFilter }: 
         ))}
 
         {/* Aircraft — rotated plane icons */}
+        {/* Blue = Syrian flight (to/from), Gold = non-Syrian overflight, Gray = other regional */}
         {aircraft.map(a => {
-          const color = a.overSyria ? '#E8B820' : '#5BBBFF'
+          const color = a.inboundToSyria ? '#5BBBFF' : (a.overSyria ? '#E8B820' : '#6B7F8E')
           return (
             <Marker
               key={a.icao24}
