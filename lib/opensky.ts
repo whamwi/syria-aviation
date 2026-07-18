@@ -38,42 +38,67 @@ let cache: AirspaceSnapshot | null = null
 let inflight: Promise<AirspaceSnapshot> | null = null
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseAircraft(raw: any[], inbound: { callsigns: Set<string>; prefixes: Set<string> }): AircraftState[] {
+function buildAircraftState(a: any, inboundToSyria: boolean): AircraftState {
+  const callsign = (a.flight ?? a.hex ?? '').trim()
+  const airline  = airlineFromCallsign(callsign)
+  const lat      = a.lat as number
+  const lon      = a.lon as number
+  const overSyria = lat >= SYRIA.lamin && lat <= SYRIA.lamax &&
+                    lon >= SYRIA.lomin && lon <= SYRIA.lomax
+  return {
+    icao24:      a.hex ?? '',
+    callsign,
+    country:     a.r ?? '',
+    airline:     airline?.name ?? null,
+    lat,
+    lon,
+    altFt:       a.alt_baro ?? a.alt_geom ?? null,
+    speedKts:    a.gs       ?? null,
+    heading:     a.track    ?? null,
+    overSyria,
+    inboundToSyria,
+    trackerUrl:  callsign
+      ? `https://www.flightradar24.com/${callsign.toLowerCase().trim()}`
+      : '',
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseRegionalFeed(raw: any[], inbound: { callsigns: Set<string>; prefixes: Set<string> }): AircraftState[] {
   return raw
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((a: any) => a.lat != null && a.lon != null && !a.ground)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((a: any): AircraftState => {
-      const callsign     = (a.flight ?? a.hex ?? '').trim()
-      const airline      = airlineFromCallsign(callsign)
-      const lat          = a.lat as number
-      const lon          = a.lon as number
-      const overSyria    = lat >= SYRIA.lamin && lat <= SYRIA.lamax &&
-                           lon >= SYRIA.lomin && lon <= SYRIA.lomax
-      const cs           = callsign.replace(/\s+/g, '').toUpperCase()
-      // Exact match: e.g. "JZR177" from flight J9177
-      const exactMatch   = inbound.callsigns.has(cs)
-      // Prefix match: airline has a Syria arrival today and plane isn't over Syria yet
-      const prefixMatch  = !overSyria && cs.length >= 3 && inbound.prefixes.has(cs.slice(0, 3))
-      const inboundToSyria = exactMatch || prefixMatch
-      return {
-        icao24:          a.hex ?? '',
-        callsign,
-        country:         a.r ?? '',
-        airline:         airline?.name ?? null,
-        lat,
-        lon,
-        altFt:           a.alt_baro ?? a.alt_geom ?? null,  // already in feet
-        speedKts:        a.gs       ?? null,                 // already in knots
-        heading:         a.track    ?? null,
-        overSyria,
-        inboundToSyria,
-        trackerUrl:      callsign
-          ? `https://www.flightradar24.com/${callsign.toLowerCase().trim()}`
-          : '',
-      }
+      const callsign = (a.flight ?? a.hex ?? '').trim()
+      const cs       = callsign.replace(/\s+/g, '').toUpperCase()
+      const lat      = a.lat as number
+      const lon      = a.lon as number
+      const overSyria = lat >= SYRIA.lamin && lat <= SYRIA.lamax &&
+                        lon >= SYRIA.lomin && lon <= SYRIA.lomax
+      const exactMatch  = inbound.callsigns.has(cs)
+      const prefixMatch = !overSyria && cs.length >= 3 && inbound.prefixes.has(cs.slice(0, 3))
+      return buildAircraftState(a, exactMatch || prefixMatch)
     })
     .filter((a: AircraftState) => a.overSyria || a.inboundToSyria)
+}
+
+// Fetch a specific callsign globally — used for Syrian flights outside the regional radius
+async function fetchByCallsign(cs: string): Promise<AircraftState | null> {
+  try {
+    const res = await fetch(`https://api.adsb.lol/v2/callsign/${cs}`, {
+      headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
+      signal: AbortSignal.timeout(4000),
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const ac   = (data.ac ?? [])[0]
+    if (!ac || ac.lat == null || ac.lon == null || ac.ground) return null
+    return buildAircraftState(ac, true)  // always blue — it's a scheduled Syrian flight
+  } catch {
+    return null
+  }
 }
 
 async function fetchFromFeed(): Promise<AirspaceSnapshot> {
@@ -85,9 +110,19 @@ async function fetchFromFeed(): Promise<AirspaceSnapshot> {
     getInboundData(),
   ])
   if (!res.ok) throw new Error(`adsb.lol ${res.status}`)
-  const data = await res.json()
-  const raw  = data.ac ?? data.aircraft ?? []
-  const aircraft = parseAircraft(raw, inbound)
+  const data     = await res.json()
+  const raw      = data.ac ?? data.aircraft ?? []
+  const regional = parseRegionalFeed(raw, inbound)
+
+  // Find scheduled Syrian callsigns not yet visible in the regional feed
+  const foundCallsigns = new Set(regional.map(a => a.callsign.toUpperCase()))
+  const missing = [...inbound.callsigns].filter(cs => !foundCallsigns.has(cs))
+
+  // Fetch each missing Syrian flight individually — they're outside the 350nm radius
+  const tracked = (await Promise.all(missing.map(fetchByCallsign)))
+    .filter(Boolean) as AircraftState[]
+
+  const aircraft = [...regional, ...tracked]
   return {
     ok:             true,
     aircraft,
