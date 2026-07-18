@@ -22,7 +22,7 @@ export async function getInboundData(): Promise<InboundData> {
     const syriaNow = new Date(now.getTime() + 3 * 60 * 60 * 1000) // UTC → UTC+3
 
     const pad = (n: number) => String(n).padStart(2, '0')
-    const windowStart = new Date(syriaNow.getTime() - 4 * 60 * 60 * 1000)
+    const windowStart = new Date(syriaNow.getTime() - 6 * 60 * 60 * 1000)  // 6h back covers long departures
     const windowEnd   = new Date(syriaNow.getTime() + 4 * 60 * 60 * 1000)
 
     // Collect the date(s) the window spans — may cross midnight
@@ -58,8 +58,6 @@ export async function getInboundData(): Promise<InboundData> {
     }
 
     const data = allRows
-
-    if (error) throw error
 
     const callsigns = new Set<string>()
     const prefixes  = new Set<string>()
