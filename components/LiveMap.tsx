@@ -21,7 +21,7 @@ export default function LiveMap() {
 
   const fetchRoutes = useCallback(async () => {
     const today = new Date().toISOString().slice(0, 10)
-    const CITIES_SET = new Set(['IST','SAW','AMM','BEY','KWI','SHJ','DXB','DOH','CAI','BGW','EBL','JED','RUH','MSQ'])
+    const CITIES_SET = new Set(['IST','SAW','AMM','BEY','KWI','SHJ','DXB','AUH','DOH','CAI','BGW','EBL','JED','RUH','AMS','MJI','TLV','MSQ'])
     try {
       const [ar, dr] = await Promise.all([
         fetch('/api/flights/alp').then(r => r.json()),

@@ -40,9 +40,10 @@ const AIRPORTS: Record<string, { lat: number; lon: number; ar: string; color: st
 const CITIES: Record<string, [number, number]> = {
   IST: [41.0,  28.72], SAW: [40.9,  29.3 ], AMM: [31.72, 36.0 ],
   BEY: [33.82, 35.49], KWI: [29.23, 47.97], SHJ: [25.33, 55.52],
-  DXB: [25.25, 55.37], DOH: [25.27, 51.57], CAI: [30.11, 31.41],
-  BGW: [33.26, 44.23], EBL: [36.23, 43.96], JED: [21.68, 39.16],
-  RUH: [24.96, 46.70], MSQ: [36.2,  37.02],
+  DXB: [25.25, 55.37], AUH: [24.43, 54.65], DOH: [25.27, 51.57],
+  CAI: [30.11, 31.41], BGW: [33.26, 44.23], EBL: [36.23, 43.96],
+  JED: [21.68, 39.16], RUH: [24.96, 46.70], AMS: [52.31,  4.76],
+  MJI: [32.89, 13.28], TLV: [32.00, 34.88], MSQ: [36.2,  37.02],
 }
 
 function getLatLon(code: string): [number, number] | null {
