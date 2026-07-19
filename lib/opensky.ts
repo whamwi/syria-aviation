@@ -171,8 +171,35 @@ function writeStatusOnce(icaoCallsign: string, status: 'departed' | 'landed') {
 const trackedCache = new Map<string, { state: AircraftState; ts: number }>()
 const TRACKED_STALE_MS = 30 * 60_000  // hold through coverage gaps (up to 30 min)
 
-// Fetch a specific callsign globally — used for Syrian flights outside the regional radius
+// Normalise an OpenSky state vector into the same shape fetchByCallsign expects.
+// State array indices per OpenSky docs:
+// 0 icao24 | 1 callsign | 2 country | 5 lon | 6 lat | 7 baro_alt(m) | 8 on_ground | 9 vel(m/s) | 10 track
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function openSkyToAc(state: any[]): Record<string, unknown> | null {
+  const lat = state[6] as number | null
+  const lon = state[5] as number | null
+  if (lat == null || lon == null) return null
+  return {
+    hex:      state[0] ?? '',
+    flight:   (state[1] as string ?? '').trim(),
+    r:        state[2] ?? '',
+    lat,
+    lon,
+    alt_baro: state[7] != null ? Math.round((state[7] as number) * 3.281) : null,  // m → ft
+    gs:       state[9] != null ? Math.round((state[9] as number) * 1.944) : null,   // m/s → kts
+    track:    state[10] ?? null,
+    ground:   state[8] === true,
+  }
+}
+
+// Fetch a specific callsign globally — used for Syrian flights outside the regional radius.
+// Tries adsb.lol first; falls back to OpenSky Network when adsb.lol has no feeders in range
+// (e.g. Gulf / Saudi Arabia airspace where adsb.lol coverage is sparse).
 async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null, isArrival = false, otherAirport: string | null = null): Promise<AircraftState | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ac: Record<string, unknown> | null = null
+
+  // --- adsb.lol per-callsign ---
   try {
     const res = await fetch(`https://api.adsb.lol/v2/callsign/${cs}`, {
       headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
@@ -181,28 +208,50 @@ async function fetchByCallsign(cs: string, airport: 'DAM' | 'ALP' | null, isArri
     })
     if (res.ok) {
       const data = await res.json()
-      const ac   = (data.ac ?? [])[0]
-      if (ac) {
-        if (ac.ground) {
-          trackedCache.delete(cs)
-          writeStatusOnce(cs, 'landed')
-          return null
-        }
-        // Fill in lat/lon from lastPosition when direct GPS is in a coverage gap
-        // (seen_pos = seconds since last position fix; accept up to 5 min stale)
-        if (ac.lat == null && ac.lastPosition && ((ac.lastPosition.seen_pos ?? ac.seen_pos ?? Infinity) < 300)) {
-          ac.lat = ac.lastPosition.lat
-          ac.lon = ac.lastPosition.lon
-        }
-        if (ac.lat != null && ac.lon != null) {
-          const state = buildAircraftState(ac, true, airport, isArrival, otherAirport)
-          trackedCache.set(cs, { state, ts: Date.now() })
-          return state
+      ac = (data.ac ?? [])[0] ?? null
+      // Fill in lat/lon from lastPosition when direct GPS is in a coverage gap
+      if (ac && ac.lat == null) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lp = (ac as any).lastPosition
+        if (lp && ((lp.seen_pos ?? (ac as any).seen_pos ?? Infinity) < 300)) {
+          ac.lat = lp.lat
+          ac.lon = lp.lon
         }
       }
-      // No usable position — fall through to stale cache
     }
-  } catch { /* network error — fall through to stale cache */ }
+  } catch { /* fall through to OpenSky */ }
+
+  // --- OpenSky fallback when adsb.lol returns nothing ---
+  if (!ac || (ac.lat == null && ac.lon == null)) {
+    try {
+      const res = await fetch(`https://opensky-network.org/api/states/all?callsign=${cs}`, {
+        headers: { 'User-Agent': 'SyriaAviationPortal/1.0' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const state = (data.states ?? []).find(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (s: any[]) => (s[1] ?? '').trim().toUpperCase() === cs
+        )
+        if (state) ac = openSkyToAc(state)
+      }
+    } catch { /* fall through to stale cache */ }
+  }
+
+  if (ac) {
+    if (ac.ground) {
+      trackedCache.delete(cs)
+      writeStatusOnce(cs, 'landed')
+      return null
+    }
+    if (ac.lat != null && ac.lon != null) {
+      const state = buildAircraftState(ac, true, airport, isArrival, otherAirport)
+      trackedCache.set(cs, { state, ts: Date.now() })
+      return state
+    }
+  }
 
   // No live data: serve last known airborne position if within the stale window
   const cached = trackedCache.get(cs)
