@@ -7,7 +7,12 @@ import { supabase }     from '@/lib/supabase'
 import { normalizeFlight } from '@/lib/normalize'
 import { extractIata, airlineByIata } from '@/lib/airlines'
 
-const ICAO_OVERRIDES: Record<string, string> = { CHC: 'FYC' }
+const ICAO_OVERRIDES: Record<string, string> = {
+  CHC: 'FYC',  // Fly Cham: airlines.json has CHC; adsb.lol uses FYC
+  LND: 'TKJ',  // Ajet (VF): airlines.json has LND; adsb.lol broadcasts TKJ
+  ACK: 'ABY',  // Air Arabia Abu Dhabi (3L): airlines.json has ACK; adsb.lol broadcasts ABY
+  EDW: 'FAD',  // Flyadeal (F3): airlines.json maps F3→EDW (Edelweiss); adsb.lol broadcasts FAD
+}
 
 function toIcaoCallsign(flightNumber: string): string | null {
   const iata = extractIata(flightNumber)

@@ -2,7 +2,7 @@
 
 export type FlightDirection = 'arrival' | 'departure'
 
-export type FlightStatus = 'on-time' | 'scheduled' | 'delayed' | 'cancelled' | 'landed' | 'boarding' | 'unknown'
+export type FlightStatus = 'on-time' | 'scheduled' | 'delayed' | 'cancelled' | 'landed' | 'departed' | 'boarding' | 'unknown'
 
 export interface Flight {
   id: string

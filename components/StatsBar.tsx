@@ -17,43 +17,25 @@ export default function StatsBar() {
 
   async function load() {
     const today = new Date().toISOString().slice(0, 10)
-    const [airRes, alpRes, damRes] = await Promise.allSettled([
-      fetch('/api/airspace').then(r => r.json()),
+    const [alpRes, damRes] = await Promise.allSettled([
       fetch('/api/flights/alp').then(r => r.json()),
       fetch('/api/flights/dam').then(r => r.json()),
     ])
-
-    const airData    = airRes.status === 'fulfilled' ? airRes.value : null
     const alpFlights = alpRes.status === 'fulfilled' ? (alpRes.value.flights ?? []) : []
     const damFlights = damRes.status === 'fulfilled' ? (damRes.value.flights ?? []) : []
-
     const alpToday = alpFlights.filter((f: { date: string }) => f.date === today).length
     const damToday = damFlights.filter((f: { date: string }) => f.date === today).length
-
     const allAirlines = new Set([
       ...alpFlights.map((f: { airline: string }) => f.airline),
       ...damFlights.map((f: { airline: string }) => f.airline),
     ])
-
-    setStats(prev => ({
-      // Only update live aircraft counts when the feed is healthy (ok: true).
-      // Preserves the last known count during transient ADS-B outages.
-      overSyria:      airData?.ok ? (airData.overSyria      ?? prev.overSyria)      : prev.overSyria,
-      inboundToSyria: airData?.ok ? (airData.inboundToSyria ?? prev.inboundToSyria) : prev.inboundToSyria,
-      dam:            damToday,
-      alp:            alpToday,
-      airlines:       allAirlines.size,
-      loading:        false,
-    }))
+    setStats(prev => ({ ...prev, dam: damToday, alp: alpToday, airlines: allAirlines.size, loading: false }))
   }
 
   useEffect(() => {
-    // Schedule data for airports + airlines (slow-changing, 2-min poll is fine)
     load()
     const id = setInterval(load, 120_000)
 
-    // Live aircraft counts come from the SSE stream — same source as the map,
-    // so they update every ~5s and never drift out of sync with what's on screen.
     const es = new EventSource('/api/airspace/stream')
     es.onmessage = (e) => {
       try {
@@ -72,38 +54,44 @@ export default function StatsBar() {
     return () => { clearInterval(id); es.close() }
   }, [])
 
+  const v = (n: number) => stats.loading ? '—' : String(n)
+
   const items = [
-    { value: stats.inboundToSyria, label: 'Syrian flights',           icon: '✈️', pulse: true },
-    { value: stats.overSyria,      label: 'aircraft over Syria',      icon: '✈'  },
-    { value: stats.dam,            label: 'at Damascus today',        icon: '🏙' },
-    { value: stats.alp,            label: 'at Aleppo today',          icon: '🌆' },
-    { value: stats.airlines,       label: 'airlines serving Syria',   icon: '🛫' },
+    { value: v(stats.inboundToSyria), label: 'Syrian Flights',     sub: 'airborne right now', color: 'var(--av-gold)', pulse: true },
+    { value: v(stats.overSyria),      label: 'Over Syria',          sub: 'transiting airspace', color: 'var(--av-gold)', pulse: false },
+    { value: v(stats.dam),            label: 'Damascus Flights',    sub: 'scheduled today',    color: '#18A866', pulse: false },
+    { value: v(stats.alp),            label: 'Aleppo Flights',      sub: 'scheduled today',    color: '#4A90E2', pulse: false },
+    { value: v(stats.airlines),       label: 'Airlines',            sub: 'operating routes',   color: 'var(--av-gold)', pulse: false },
   ]
 
   return (
     <div
+      className="flex items-stretch shrink-0"
       style={{ background: 'var(--av-panel)', borderBottom: '1px solid var(--av-line)' }}
-      className="flex flex-wrap"
     >
       {items.map((item, i) => (
         <div
           key={i}
-          className="flex items-center gap-2 px-5 py-3"
+          className="flex-1 flex flex-col justify-center px-5 py-3"
           style={{ borderRight: i < items.length - 1 ? '1px solid var(--av-line)' : 'none' }}
         >
-          <span className="text-base">{item.icon}</span>
-          <span
-            className="text-2xl font-semibold tabular-nums"
-            style={{ color: 'var(--av-gold)', fontFamily: 'var(--av-font-mono)' }}
-          >
-            {stats.loading ? '—' : item.value}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--av-ink2)' }}>
-            {item.label}
+          <div className="flex items-center gap-2">
+            <span
+              className="text-3xl font-bold tabular-nums leading-none"
+              style={{ color: item.color, fontFamily: 'var(--av-font-mono)' }}
+            >
+              {item.value}
+            </span>
             {item.pulse && !stats.loading && (
-              <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-[var(--av-go)] animate-pulse" />
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--av-go)] animate-pulse" />
             )}
-          </span>
+          </div>
+          <div className="mt-1 text-[13px] font-medium leading-tight" style={{ color: 'var(--av-ink1)' }}>
+            {item.label}
+          </div>
+          <div className="text-[11px] leading-tight" style={{ color: 'var(--av-ink3)' }}>
+            {item.sub}
+          </div>
         </div>
       ))}
     </div>

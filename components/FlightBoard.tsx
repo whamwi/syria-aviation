@@ -16,20 +16,45 @@ function statusBadge(status: string) {
     'delayed':   'badge badge-warn',
     'cancelled': 'badge badge-err',
     'landed':    'badge badge-go',
+    'departed':  'badge badge-go',
     'boarding':  'badge badge-go',
   }
   const labels: Record<string, string> = {
     'on-time': 'On Time', 'scheduled': 'Scheduled', 'delayed': 'Delayed',
-    'cancelled': 'Cancelled', 'landed': 'Landed', 'boarding': 'Boarding',
+    'cancelled': 'Cancelled', 'landed': 'Landed', 'departed': 'Departed', 'boarding': 'Boarding',
   }
   return <span className={map[status] ?? 'badge badge-dim'}>{labels[status] ?? status}</span>
+}
+
+// The DAM/ALP APIs only return "scheduled" or "delayed" — they never update to landed/departed.
+// Derive a more accurate status client-side using Syria local time (UTC+3).
+function deriveStatus(f: Flight): string {
+  if (f.status === 'delayed' || f.status === 'cancelled') return f.status
+
+  // Current time in Syria (UTC+3)
+  const nowSyria = new Date(Date.now() + 3 * 60 * 60 * 1000)
+  const syriaTodayStr = nowSyria.toISOString().slice(0, 10)
+  if (f.date !== syriaTodayStr) return f.status
+
+  const [hh, mm] = f.time.split(':').map(Number)
+  if (isNaN(hh) || isNaN(mm)) return f.status
+
+  const scheduled = hh * 60 + mm
+  const current   = nowSyria.getUTCHours() * 60 + nowSyria.getUTCMinutes()
+  // Handle midnight crossings (e.g. scheduled 23:30, now 00:15)
+  const diff = current - scheduled < -720 ? current - scheduled + 1440 : current - scheduled
+
+  if (diff >= 45) return f.direction === 'arrival' ? 'landed'   : 'departed'
+  if (diff >= 0)  return f.direction === 'arrival' ? 'on-time'  : 'departed'
+  if (diff >= -30 && f.direction === 'departure') return 'boarding'
+  return f.status
 }
 
 export default function FlightBoard({ airport }: { airport: 'ALP' | 'DAM' }) {
   const [flights, setFlights] = useState<Flight[]>([])
   const [loading, setLoading] = useState(true)
   const [dir, setDir] = useState<'all' | 'arrival' | 'departure'>('all')
-  const [dateFilter, setDateFilter] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [dateFilter, setDateFilter] = useState<string>('')
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -50,6 +75,18 @@ export default function FlightBoard({ airport }: { airport: 'ALP' | 'DAM' }) {
     const s = new Set(flights.map(f => f.date))
     return Array.from(s).sort()
   }, [flights])
+
+  // Auto-select date on the client after data loads.
+  // Use local date components (not toISOString which is UTC) so Syria UTC+3 users
+  // get the correct local date after midnight.
+  useEffect(() => {
+    if (dates.length === 0) return
+    const d = new Date()
+    const localToday = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    if (!dateFilter || !dates.includes(dateFilter)) {
+      setDateFilter(dates.includes(localToday) ? localToday : dates[dates.length - 1])
+    }
+  }, [dates]) // intentionally omit dateFilter — only re-run when data changes
 
   const filtered = useMemo(() => {
     return flights.filter(f => {
@@ -179,7 +216,7 @@ export default function FlightBoard({ airport }: { airport: 'ALP' | 'DAM' }) {
               </span>
               <span style={{ color: 'var(--av-ink2)', fontFamily: 'var(--av-font-mono)', fontSize: 12 }}>{f.date}</span>
               <span style={{ fontFamily: 'var(--av-font-mono)', color: 'var(--av-gold)' }}>{f.time}</span>
-              <span>{statusBadge(f.status)}</span>
+              <span>{statusBadge(deriveStatus(f))}</span>
               <a
                 href={f.trackerUrl}
                 target="_blank"
