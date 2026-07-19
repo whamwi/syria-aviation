@@ -24,11 +24,15 @@ export async function GET() {
       const override = overrides.get(flight.flightNumber) ?? overrides.get(flight.flightNumber.replace(/\s+/g, ''))
       if (override) flight.status = applyStatusOverride(flight.status, override)
 
-      // Time-based landing: arrival detected airborne (departed) but scheduled time
-      // has passed by ≥30 min — airport API won't update, so we infer it landed.
-      if (flight.direction === 'arrival' && flight.status === 'departed' && flight.date === today) {
+      // Time-based status inference — airport API always returns 'scheduled', never self-updates,
+      // and its date field is stale/wrong so we only compare HH:MM against Syria clock.
+      if (flight.status === 'departed') {
         const [hh, mm] = flight.time.split(':').map(Number)
-        if (nowMin - (hh * 60 + mm) >= 30) flight.status = 'landed'
+        const minPast = nowMin - (hh * 60 + mm)
+        // Arrival ≥30 min past scheduled → infer landed
+        if (flight.direction === 'arrival' && minPast >= 30) flight.status = 'landed'
+        // Departure ≥3h past scheduled → infer landed at destination (flight is done)
+        if (flight.direction === 'departure' && minPast >= 180) flight.status = 'landed'
       }
 
       return flight
