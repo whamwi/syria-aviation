@@ -4,6 +4,20 @@ import { getStatusOverrides, applyStatusOverride } from '@/lib/flightStatus'
 
 export const revalidate = 60
 
+// Estimated flight time (minutes) from DAM to destination + 30 min buffer.
+// After this many minutes past scheduled departure we infer the flight has landed.
+function depCloseMin(dest: string): number {
+  switch (dest) {
+    case 'BEY': case 'AMM': return 90   // ~1h flights
+    case 'CAI': case 'TLV': return 120  // ~1.5h
+    case 'IST': case 'SAW': return 180  // ~2.5h
+    case 'AUH': case 'DXB': case 'SHJ': case 'SHR': return 240  // ~3.5h
+    case 'KWI': case 'DOH': case 'BAH': return 240  // ~3h+
+    case 'RUH': case 'JED': return 270  // ~3.5-4h
+    default:    return 240  // safe default for unknown routes
+  }
+}
+
 export async function GET() {
   try {
     const syriaNow = new Date(Date.now() + 3 * 60 * 60 * 1000)
@@ -29,10 +43,13 @@ export async function GET() {
       if (flight.status === 'departed') {
         const [hh, mm] = flight.time.split(':').map(Number)
         const minPast = nowMin - (hh * 60 + mm)
-        // Arrival ≥30 min past scheduled → infer landed
-        if (flight.direction === 'arrival' && minPast >= 30) flight.status = 'landed'
-        // Departure ≥3h past scheduled → infer landed at destination (flight is done)
-        if (flight.direction === 'departure' && minPast >= 180) flight.status = 'landed'
+        if (flight.direction === 'arrival' && minPast >= 30) {
+          // Arrival ≥30 min past scheduled → landed
+          flight.status = 'landed'
+        } else if (flight.direction === 'departure' && minPast >= depCloseMin(flight.destination)) {
+          // Departure past estimated flight time + 30 min buffer → landed at destination
+          flight.status = 'landed'
+        }
       }
 
       return flight

@@ -4,6 +4,18 @@ import { getStatusOverrides, applyStatusOverride } from '@/lib/flightStatus'
 
 export const revalidate = 60
 
+function depCloseMin(dest: string): number {
+  switch (dest) {
+    case 'BEY': case 'AMM': return 90
+    case 'CAI': case 'TLV': return 120
+    case 'IST': case 'SAW': return 180
+    case 'AUH': case 'DXB': case 'SHJ': return 240
+    case 'KWI': case 'DOH': case 'BAH': return 240
+    case 'RUH': case 'JED': return 270
+    default:    return 240
+  }
+}
+
 export async function GET() {
   try {
     const syriaNow = new Date(Date.now() + 3 * 60 * 60 * 1000)
@@ -31,8 +43,8 @@ export async function GET() {
         const minPast = nowMin - (hh * 60 + mm)
         // Arrival ≥30 min past scheduled → infer landed
         if (flight.direction === 'arrival' && minPast >= 30) flight.status = 'landed'
-        // Departure ≥3h past scheduled → infer landed at destination (flight is done)
-        if (flight.direction === 'departure' && minPast >= 180) flight.status = 'landed'
+        // Departure past estimated flight time + 30 min buffer → landed at destination
+        if (flight.direction === 'departure' && minPast >= depCloseMin(flight.destination)) flight.status = 'landed'
       }
 
       return flight
